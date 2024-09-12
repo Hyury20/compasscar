@@ -24,73 +24,72 @@ connection.connect(err => {
 
 // Endpoint POST para criar carros
 app.post('/api/v1/cars', (req, res) => {
-    const { brand, model, year, items } = req.body;
-  
-    // Validações
-    if (!brand) {
-      return res.status(400).json({ message: 'brand is required' });
-    }
-    if (!model) {
-      return res.status(400).json({ message: 'model is required' });
-    }
-    if (!year) {
-      return res.status(400).json({ message: 'year is required' });
-    }
-    if (!items) {
-      return res.status(400).json({ message: 'items are required' });
-    }
-    if (year < 2015 || year > 2025) {
-      return res.status(400).json({ message: 'year should be between 2015 and 2025' });
-    }
-  
-    // Verificar se o carro já existe
-    connection.query(
-      'SELECT * FROM cars WHERE brand = ? AND model = ? AND year = ?',
-      [brand, model, year],
-      (err, results) => {
-        if (err) {
-          return res.status(500).json({ message: 'Database error' });
-        }
-        if (results.length > 0) {
-          return res.status(409).json({ message: 'there is already a car with this data' });
-        }
-  
-        // Inserir o carro
-        connection.query(
-          'INSERT INTO cars (brand, model, year) VALUES (?, ?, ?)',
-          [brand, model, year],
-          (err, results) => {
-            if (err) {
-              return res.status(500).json({ message: 'Database error' });
-            }
-  
-            const carId = results.insertId;
-  
-            // Inserir os itens
-            const uniqueItems = [...new Set(items)];
-            const itemValues = uniqueItems.map(item => [item, carId]);
-  
-            // Usar INSERT IGNORE para evitar erros de duplicata
-            connection.query(
-              'INSERT IGNORE INTO cars_items (name, car_id) VALUES ?',
-              [itemValues],
-              (err) => {
-                if (err) {
-                  console.error('Erro ao inserir itens:', err);
-                  return res.status(500).json({ message: 'Database error' });
-                }
-  
-                res.status(201).json({ id: carId });
-              }
-            );
-          }
-        );
-      }
-    );
-  });
-  
+  const { brand, model, year, items } = req.body;
 
-// Endpoint GET para listar carros
+  // Validações
+  if (!brand) {
+    return res.status(400).json({ message: 'brand is required' });
+  }
+  if (!model) {
+    return res.status(400).json({ message: 'model is required' });
+  }
+  if (!year) {
+    return res.status(400).json({ message: 'year is required' });
+  }
+  if (!items) {
+    return res.status(400).json({ message: 'items are required' });
+  }
+  if (year < 2015 || year > 2025) {
+    return res.status(400).json({ message: 'year should be between 2015 and 2025' });
+  }
+
+  // Verificar se o carro já existe
+  connection.query(
+    'SELECT * FROM cars WHERE brand = ? AND model = ? AND year = ?',
+    [brand, model, year],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: 'Database error' });
+      }
+      if (results.length > 0) {
+        return res.status(409).json({ message: 'there is already a car with this data' });
+      }
+
+      // Inserir o carro
+      connection.query(
+        'INSERT INTO cars (brand, model, year) VALUES (?, ?, ?)',
+        [brand, model, year],
+        (err, results) => {
+          if (err) {
+            return res.status(500).json({ message: 'Database error' });
+          }
+
+          const carId = results.insertId;
+
+          // Inserir os itens
+          const uniqueItems = [...new Set(items)];
+          const itemValues = uniqueItems.map(item => [item, carId]);
+
+          // Usar INSERT IGNORE para evitar erros de duplicata
+          connection.query(
+            'INSERT IGNORE INTO cars_items (name, car_id) VALUES ?',
+            [itemValues],
+            (err) => {
+              if (err) {
+                console.error('Erro ao inserir itens:', err);
+                return res.status(500).json({ message: 'Database error' });
+              }
+
+              res.status(201).json({ id: carId });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Endpoint GET para listar carros com paginação e filtros
 app.get('/api/v1/cars', (req, res) => {
   const { page = 1, limit = 5, brand, model, year } = req.query;
 
@@ -168,6 +167,35 @@ app.get('/api/v1/cars', (req, res) => {
       });
     });
   });
+});
+
+// Endpoint GET para buscar carro por ID
+app.get('/api/v1/cars/:id', (req, res) => {
+  const carId = req.params.id;
+
+  // Verificar se o carro com o ID existe
+  connection.query(
+    'SELECT cars.id, brand, model, year, GROUP_CONCAT(cars_items.name) AS items FROM cars LEFT JOIN cars_items ON cars.id = cars_items.car_id WHERE cars.id = ? GROUP BY cars.id',
+    [carId],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: 'Database error' });
+      }
+      if (results.length === 0) {
+        return res.status(404).json({ message: 'car not found' });
+      }
+
+      const car = {
+        id: results[0].id,
+        brand: results[0].brand,
+        model: results[0].model,
+        year: results[0].year,
+        items: results[0].items ? results[0].items.split(',') : []
+      };
+
+      res.status(200).json(car);
+    }
+  );
 });
 
 // Iniciar o servidor
