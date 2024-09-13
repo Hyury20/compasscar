@@ -89,7 +89,7 @@ app.post('/api/v1/cars', (req, res) => {
   );
 });
 
-// Endpoint GET para listar carros com paginação e filtros
+// Endpoint GET para listar carros
 app.get('/api/v1/cars', (req, res) => {
   const { page = 1, limit = 5, brand, model, year } = req.query;
 
@@ -173,29 +173,108 @@ app.get('/api/v1/cars', (req, res) => {
 app.get('/api/v1/cars/:id', (req, res) => {
   const carId = req.params.id;
 
-  // Verificar se o carro com o ID existe
-  connection.query(
-    'SELECT cars.id, brand, model, year, GROUP_CONCAT(cars_items.name) AS items FROM cars LEFT JOIN cars_items ON cars.id = cars_items.car_id WHERE cars.id = ? GROUP BY cars.id',
-    [carId],
-    (err, results) => {
+  connection.query('SELECT cars.id, brand, model, year, GROUP_CONCAT(cars_items.name) AS items FROM cars LEFT JOIN cars_items ON cars.id = cars_items.car_id WHERE cars.id = ?', [carId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Database error' });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'car not found' });
+    }
+
+    const car = results[0];
+    res.status(200).json({
+      id: car.id,
+      brand: car.brand,
+      model: car.model,
+      year: car.year,
+      items: car.items ? car.items.split(',') : []
+    });
+  });
+});
+
+// Endpoint PATCH para atualizar carro
+app.patch('/api/v1/cars/:id', (req, res) => {
+  const carId = req.params.id;
+  const { brand, model, year, items } = req.body;
+
+  // Validações de year e items
+  if (year && (year < 2015 || year > 2025)) {
+    return res.status(400).json({ message: 'year should be between 2015 and 2025' });
+  }
+  if (items && !Array.isArray(items)) {
+    return res.status(400).json({ message: 'items should be an array' });
+  }
+
+  // Verificar se o carro existe
+  connection.query('SELECT * FROM cars WHERE id = ?', [carId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Database error' });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'car not found' });
+    }
+
+    // Preparar os campos a serem atualizados
+    const updateFields = [];
+    const queryParams = [];
+
+    if (brand) {
+      updateFields.push('brand = ?');
+      queryParams.push(brand);
+    }
+    if (model) {
+      updateFields.push('model = ?');
+      queryParams.push(model);
+    }
+    if (year) {
+      updateFields.push('year = ?');
+      queryParams.push(year);
+    }
+
+    // Se não houver campos para atualizar
+    if (updateFields.length === 0) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+
+    // Atualizar carro
+    const updateQuery = `UPDATE cars SET ${updateFields.join(', ')} WHERE id = ?`;
+    queryParams.push(carId);
+
+    connection.query(updateQuery, queryParams, (err) => {
       if (err) {
         return res.status(500).json({ message: 'Database error' });
       }
-      if (results.length === 0) {
-        return res.status(404).json({ message: 'car not found' });
+
+      // Atualizar itens, se fornecidos
+      if (items) {
+        const uniqueItems = [...new Set(items)];
+        const itemValues = uniqueItems.map(item => [item, carId]);
+
+        // Atualizar itens do carro
+        connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
+          if (err) {
+            return res.status(500).json({ message: 'Database error' });
+          }
+
+          // Inserir os novos itens
+          connection.query(
+            'INSERT INTO cars_items (name, car_id) VALUES ?',
+            [itemValues],
+            (err) => {
+              if (err) {
+                console.error('Erro ao inserir itens:', err);
+                return res.status(500).json({ message: 'Database error' });
+              }
+
+              res.status(204).send(); // Atualização bem-sucedida
+            }
+          );
+        });
+      } else {
+        res.status(204).send(); // Atualização bem-sucedida, sem itens
       }
-
-      const car = {
-        id: results[0].id,
-        brand: results[0].brand,
-        model: results[0].model,
-        year: results[0].year,
-        items: results[0].items ? results[0].items.split(',') : []
-      };
-
-      res.status(200).json(car);
-    }
-  );
+    });
+  });
 });
 
 // Iniciar o servidor
