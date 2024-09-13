@@ -250,34 +250,60 @@ app.patch('/api/v1/cars/:id', (req, res) => {
         const uniqueItems = [...new Set(items)];
         const itemValues = uniqueItems.map(item => [item, carId]);
 
-        // Atualizar itens do carro
+        // Excluir os itens antigos do carro
         connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
           if (err) {
             return res.status(500).json({ message: 'Database error' });
           }
 
           // Inserir os novos itens
-          connection.query(
-            'INSERT INTO cars_items (name, car_id) VALUES ?',
-            [itemValues],
-            (err) => {
-              if (err) {
-                console.error('Erro ao inserir itens:', err);
-                return res.status(500).json({ message: 'Database error' });
-              }
-
-              res.status(204).send(); // Atualização bem-sucedida
+          connection.query('INSERT IGNORE INTO cars_items (name, car_id) VALUES ?', [itemValues], (err) => {
+            if (err) {
+              return res.status(500).json({ message: 'Database error' });
             }
-          );
+
+            res.status(200).json({ message: 'car updated successfully' });
+          });
         });
       } else {
-        res.status(204).send(); // Atualização bem-sucedida, sem itens
+        res.status(200).json({ message: 'car updated successfully' });
       }
+    });
+  });
+});
+
+// Endpoint DELETE para excluir carro
+app.delete('/api/v1/cars/:id', (req, res) => {
+  const carId = req.params.id;
+
+  // Verificar se o carro existe
+  connection.query('SELECT * FROM cars WHERE id = ?', [carId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: 'internal server error' });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'car not found' });
+    }
+
+    // Excluir os itens do carro
+    connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'internal server error' });
+      }
+
+      // Excluir o carro
+      connection.query('DELETE FROM cars WHERE id = ?', [carId], (err) => {
+        if (err) {
+          return res.status(500).json({ error: 'internal server error' });
+        }
+
+        res.status(200).json({ message: 'car deleted successfully' });
+      });
     });
   });
 });
 
 // Iniciar o servidor
 app.listen(port, () => {
-  console.log(`Servidor rodando em http://localhost:${port}`);
+  console.log(`Servidor rodando na porta ${port}`);
 });
