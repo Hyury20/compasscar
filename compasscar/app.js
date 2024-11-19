@@ -36,11 +36,16 @@ app.post('/api/v1/cars', (req, res) => {
   if (!year) {
     return res.status(400).json({ message: 'year is required' });
   }
-  if (!items) {
-    return res.status(400).json({ message: 'items are required' });
+  if (!items || !Array.isArray(items)) {
+    return res.status(400).json({ message: 'items must be an array' });
   }
-  if (year < 2015 || year > 2025) {
-    return res.status(400).json({ message: 'year should be between 2015 and 2025' });
+  if (items.length === 0) {
+    return res.status(400).json({ message: 'items array cannot be empty' });
+  }
+
+  const currentYear = new Date().getFullYear(); // Obter o ano atual
+  if (year < 2015 || year > currentYear) {
+    return res.status(400).json({ message: `year should be between 2015 and ${currentYear}` });
   }
 
   // Verificar se o carro já existe
@@ -88,6 +93,7 @@ app.post('/api/v1/cars', (req, res) => {
     }
   );
 });
+
 
 // Endpoint GET para listar carros
 app.get('/api/v1/cars', (req, res) => {
@@ -198,8 +204,9 @@ app.patch('/api/v1/cars/:id', (req, res) => {
   const { brand, model, year, items } = req.body;
 
   // Validações de year e items
-  if (year && (year < 2015 || year > 2025)) {
-    return res.status(400).json({ message: 'year should be between 2015 and 2025' });
+  const currentYear = new Date().getFullYear(); // Obter o ano atual
+  if (year && (year < 2015 || year > currentYear)) {
+    return res.status(400).json({ message: `year should be between 2015 and ${currentYear}` });
   }
   if (items && !Array.isArray(items)) {
     return res.status(400).json({ message: 'items should be an array' });
@@ -240,32 +247,25 @@ app.patch('/api/v1/cars/:id', (req, res) => {
         queryParams.push(year);
       }
 
-      // Se não houver campos para atualizar
-      if (updateFields.length === 0) {
-        return res.status(400).json({ message: 'No fields to update' });
-      }
-
-      // Atualizar carro
-      const updateQuery = `UPDATE cars SET ${updateFields.join(', ')} WHERE id = ?`;
       queryParams.push(carId);
 
-      connection.query(updateQuery, queryParams, (err) => {
+      // Atualizar o carro
+      connection.query(`UPDATE cars SET ${updateFields.join(', ')} WHERE id = ?`, queryParams, (err) => {
         if (err) {
           return res.status(500).json({ message: 'Database error' });
         }
 
-        // Atualizar itens, se fornecidos
+        // Atualizar os itens
         if (items) {
           const uniqueItems = [...new Set(items)];
           const itemValues = uniqueItems.map(item => [item, carId]);
 
-          // Excluir os itens antigos do carro
+          // Limpar itens antigos e inserir novos
           connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
             if (err) {
               return res.status(500).json({ message: 'Database error' });
             }
 
-            // Inserir os novos itens
             connection.query('INSERT IGNORE INTO cars_items (name, car_id) VALUES ?', [itemValues], (err) => {
               if (err) {
                 return res.status(500).json({ message: 'Database error' });
@@ -284,5 +284,5 @@ app.patch('/api/v1/cars/:id', (req, res) => {
 
 // Iniciar o servidor
 app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+  console.log(`Servidor rodando na porta ${port}`);
 });
