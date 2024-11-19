@@ -214,90 +214,69 @@ app.patch('/api/v1/cars/:id', (req, res) => {
       return res.status(404).json({ message: 'car not found' });
     }
 
-    // Preparar os campos a serem atualizados
-    const updateFields = [];
-    const queryParams = [];
-
-    if (brand) {
-      updateFields.push('brand = ?');
-      queryParams.push(brand);
-    }
-    if (model) {
-      updateFields.push('model = ?');
-      queryParams.push(model);
-    }
-    if (year) {
-      updateFields.push('year = ?');
-      queryParams.push(year);
-    }
-
-    // Se não houver campos para atualizar
-    if (updateFields.length === 0) {
-      return res.status(400).json({ message: 'No fields to update' });
-    }
-
-    // Atualizar carro
-    const updateQuery = `UPDATE cars SET ${updateFields.join(', ')} WHERE id = ?`;
-    queryParams.push(carId);
-
-    connection.query(updateQuery, queryParams, (err) => {
+    // Verificar se já existe um carro com os mesmos dados, excluindo o carro atual
+    connection.query('SELECT * FROM cars WHERE brand = ? AND model = ? AND year = ? AND id != ?', [brand, model, year, carId], (err, results) => {
       if (err) {
         return res.status(500).json({ message: 'Database error' });
       }
+      if (results.length > 0) {
+        return res.status(409).json({ message: 'there is already a car with this data' });
+      }
 
-      // Atualizar itens, se fornecidos
-      if (items) {
-        const uniqueItems = [...new Set(items)];
-        const itemValues = uniqueItems.map(item => [item, carId]);
+      // Preparar os campos a serem atualizados
+      const updateFields = [];
+      const queryParams = [];
 
-        // Excluir os itens antigos do carro
-        connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
-          if (err) {
-            return res.status(500).json({ message: 'Database error' });
-          }
+      if (brand) {
+        updateFields.push('brand = ?');
+        queryParams.push(brand);
+      }
+      if (model) {
+        updateFields.push('model = ?');
+        queryParams.push(model);
+      }
+      if (year) {
+        updateFields.push('year = ?');
+        queryParams.push(year);
+      }
 
-          // Inserir os novos itens
-          connection.query('INSERT IGNORE INTO cars_items (name, car_id) VALUES ?', [itemValues], (err) => {
+      // Se não houver campos para atualizar
+      if (updateFields.length === 0) {
+        return res.status(400).json({ message: 'No fields to update' });
+      }
+
+      // Atualizar carro
+      const updateQuery = `UPDATE cars SET ${updateFields.join(', ')} WHERE id = ?`;
+      queryParams.push(carId);
+
+      connection.query(updateQuery, queryParams, (err) => {
+        if (err) {
+          return res.status(500).json({ message: 'Database error' });
+        }
+
+        // Atualizar itens, se fornecidos
+        if (items) {
+          const uniqueItems = [...new Set(items)];
+          const itemValues = uniqueItems.map(item => [item, carId]);
+
+          // Excluir os itens antigos do carro
+          connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
             if (err) {
               return res.status(500).json({ message: 'Database error' });
             }
 
-            res.status(200).json({ message: 'car updated successfully' });
+            // Inserir os novos itens
+            connection.query('INSERT IGNORE INTO cars_items (name, car_id) VALUES ?', [itemValues], (err) => {
+              if (err) {
+                return res.status(500).json({ message: 'Database error' });
+              }
+
+              res.status(200).json({ message: 'car updated successfully' });
+            });
           });
-        });
-      } else {
-        res.status(200).json({ message: 'car updated successfully' });
-      }
-    });
-  });
-});
-
-// Endpoint DELETE para excluir carro
-app.delete('/api/v1/cars/:id', (req, res) => {
-  const carId = req.params.id;
-
-  // Verificar se o carro existe
-  connection.query('SELECT * FROM cars WHERE id = ?', [carId], (err, results) => {
-    if (err) {
-      return res.status(500).json({ error: 'internal server error' });
-    }
-    if (results.length === 0) {
-      return res.status(404).json({ error: 'car not found' });
-    }
-
-    // Excluir os itens do carro
-    connection.query('DELETE FROM cars_items WHERE car_id = ?', [carId], (err) => {
-      if (err) {
-        return res.status(500).json({ error: 'internal server error' });
-      }
-
-      // Excluir o carro
-      connection.query('DELETE FROM cars WHERE id = ?', [carId], (err) => {
-        if (err) {
-          return res.status(500).json({ error: 'internal server error' });
+        } else {
+          res.status(200).json({ message: 'car updated successfully' });
         }
-
-        res.status(200).json({ message: 'car deleted successfully' });
       });
     });
   });
@@ -305,5 +284,5 @@ app.delete('/api/v1/cars/:id', (req, res) => {
 
 // Iniciar o servidor
 app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
+  console.log(`Server is running on http://localhost:${port}`);
 });
